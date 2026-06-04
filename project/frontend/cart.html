@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cart – Freshpetals</title>
+  <link rel="stylesheet" href="styles.css">
+
+  <style>
+    .cart-quantity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+}
+
+.cart-quantity button {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: #ff7ab3;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.cart-quantity span {
+  min-width: 20px;
+  text-align: center;
+}
+
+.remove-btn {
+  background: #ff4b5c;
+  color: white;
+  border: none;
+  padding: 6px 10px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+  </style>
+</head>
+<body style="background:url('https://img.freepik.com/premium-photo/shopping-trolley-with-flowers-pink-punchy-pastel-background-banner-with-copy-space-top-view-flat-lay-creative-layout-festive-shopping-sale-gifts-her_769609-6629.jpg?semt=ais_rp_progressive&w=740&q=80') center/cover no-repeat;" >
+>
+
+<header></header>
+
+<div class="container">
+  <h1 class="page-title">Your Cart</h1>
+  <div id="cartContainer">Loading...</div>
+</div>
+
+<script src="js/common.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  renderHeader("Cart");
+
+  if (!isLoggedIn()) {
+    document.getElementById("cartContainer").innerHTML =
+      '<p class="require-auth">Please <a href="login.html">login</a> to view your cart.</p>';
+    return;
+  }
+
+  fetchCart();
+});
+
+async function fetchCart() {
+  try {
+    const res = await fetch(`${BASE_URL}/cart`, {
+      headers: { Authorization: "Bearer " + getToken() },
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      document.getElementById("cartContainer").innerHTML =
+        '<p class="text-muted">Failed to load cart.</p>';
+      return;
+    }
+
+    const items = data.items || [];
+    const total = data.total || 0;
+
+    if (items.length === 0) {
+      document.getElementById("cartContainer").innerHTML = `
+        <div class="cart-empty">
+          <p>Your cart is empty.</p>
+          <a href="index.html">Continue shopping</a>
+        </div>
+      `;
+      return;
+    }
+
+    let html = '<div class="cart-list">';
+
+    items.forEach((item) => {
+      const img = item.image || "https://via.placeholder.com/80?text=No+Image";
+
+      html += `
+        <div class="cart-item">
+          <img class="cart-item-img" src="${img}" alt="">
+
+          <div class="cart-item-details">
+            <div class="cart-item-name">${escapeHtml(item.name)}</div>
+
+            <div class="cart-quantity">
+              <button onclick="changeQty('${item.product_id}', ${item.quantity - 1})">-</button>
+              <span>${item.quantity}</span>
+              <button onclick="changeQty('${item.product_id}', ${item.quantity + 1})">+</button>
+            </div>
+
+            <div class="cart-item-meta">₹ ${Number(item.price).toFixed(2)}</div>
+          </div>
+
+          <div class="cart-item-subtotal">
+            ₹ ${Number(item.subtotal).toFixed(2)}
+          </div>
+
+          <button class="remove-btn" onclick="removeItem('${item.product_id}')">
+            Remove
+          </button>
+        </div>
+      `;
+    });
+
+    html += "</div>";
+
+    html += `
+      <div class="cart-summary">
+        <div class="cart-summary-row">
+          <span>Subtotal</span>
+          <span>₹ ${Number(total).toFixed(2)}</span>
+        </div>
+
+        <div class="cart-summary-row total">
+          <span>Total</span>
+          <span>₹ ${Number(total).toFixed(2)}</span>
+        </div>
+
+        <a href="checkout.html" class="btn btn-primary"
+        style="display:inline-block;width:100%;text-align:center;margin-top:1rem;text-decoration:none;">
+        Proceed to Checkout
+        </a>
+      </div>
+    `;
+
+    document.getElementById("cartContainer").innerHTML = html;
+
+  } catch (err) {
+    document.getElementById("cartContainer").innerHTML =
+      '<p class="text-muted">Server error.</p>';
+  }
+}
+
+async function changeQty(product_id, quantity) {
+
+  if (quantity <= 0) {
+    removeItem(product_id);
+    return;
+  }
+
+  await fetch(`${BASE_URL}/cart/update`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + getToken()
+    },
+    body: JSON.stringify({
+      product_id: product_id,
+      quantity: quantity
+    })
+  });
+
+  fetchCart();
+}
+
+async function removeItem(product_id) {
+
+  await fetch(`${BASE_URL}/cart/remove/${product_id}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: "Bearer " + getToken()
+    }
+  });
+
+  fetchCart();
+}
+
+function escapeHtml(s) {
+  const div = document.createElement("div");
+  div.textContent = s;
+  return div.innerHTML;
+}
+</script>
+
+</body>
+</html>

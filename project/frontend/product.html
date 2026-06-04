@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Product – Freshpetals</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header></header>
+
+    <div class="container" id="productContainer">Loading...</div>
+
+    <script src="js/common.js"></script>
+    <script>
+      var productId = new URLSearchParams(window.location.search).get("id");
+      var isWishlisted = false;
+
+      function escapeHtml(str) {
+        if (str == null) return "";
+        return String(str).replace(/[&<>"']/g, function (m) {
+          return {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+          }[m];
+        });
+      }
+
+      document.addEventListener("DOMContentLoaded", function () {
+        renderHeader("Home");
+        if (!productId) {
+          document.getElementById("productContainer").innerHTML =
+            '<p class="text-muted">Product not found.</p>';
+          return;
+        }
+        fetchProduct();
+      });
+
+      async function fetchWishlistState() {
+        if (!isLoggedIn()) {
+          isWishlisted = false;
+          return;
+        }
+        try {
+          var res = await fetch(BASE_URL + "/wishlist", { headers: authHeaders() });
+          var data = await res.json();
+          if (!res.ok) {
+            isWishlisted = false;
+            return;
+          }
+          var ids = (data.items || []).map(function (it) { return it.product_id; });
+          isWishlisted = ids.indexOf(productId) >= 0;
+        } catch (e) {
+          isWishlisted = false;
+        }
+      }
+
+      async function fetchProduct() {
+        try {
+          await fetchWishlistState();
+          var res = await fetch(BASE_URL + "/details/" + productId);
+          var product = await res.json();
+          if (!res.ok) throw new Error(product.message || "Not found");
+          displayProduct(product);
+        } catch (err) {
+          document.getElementById("productContainer").innerHTML =
+            '<p class="text-muted">Failed to load product.</p>';
+        }
+      }
+
+      function displayProduct(product) {
+        var images =
+          product.images && product.images.length > 0
+            ? product.images
+            : ["https://via.placeholder.com/400x400?text=No+Image"];
+        var maxQty = Math.min(Math.max(1, Number(product.stock) || 1), 99);
+
+        var thumbnailsHtml = images
+          .map(function (img, idx) {
+            var border = idx === 0 ? "var(--accent)" : "transparent";
+            return (
+              '<img src="' +
+              img +
+              '" data-src="' +
+              String(img).replace(/"/g, "&quot;") +
+              '" class="thumb-img' +
+              (idx === 0 ? " active" : "") +
+              '" style="width:60px; height:60px; object-fit:cover; cursor:pointer; border:2px solid ' +
+              border +
+              '; border-radius:4px; margin-right:5px;">'
+            );
+          })
+          .join("");
+
+        document.getElementById("productContainer").innerHTML =
+          '<div class="product-page-layout">' +
+          '<div class="product-gallery">' +
+          '<img id="mainImage" src="' +
+          images[0] +
+          '" style="width:100%; border-radius:var(--radius); margin-bottom:1rem;" alt="' +
+          escapeHtml(product.name) +
+          '">' +
+          '<div class="thumbnails" id="thumbnails">' +
+          thumbnailsHtml +
+          "</div>" +
+          "</div>" +
+          '<div class="product-info">' +
+          '<h1 style="font-size:2rem; margin-bottom:0.5rem;">' +
+          escapeHtml(product.name) +
+          "</h1>" +
+          '<p style="color:var(--accent); margin-bottom:1rem;">Category: ' +
+          escapeHtml(product.category || "General") +
+          "</p>" +
+          '<hr style="border:0; border-top:1px solid var(--border); margin:1rem 0;">' +
+          "<h3>About this item</h3>" +
+          '<p style="color:var(--text-muted); line-height:1.6; margin-top:0.5rem;">' +
+          escapeHtml(product.description || "") +
+          "</p>" +
+          "</div>" +
+          '<div class="buy-box">' +
+          '<div class="price">₹ ' +
+          Number(product.price).toFixed(2) +
+          "</div>" +
+          '<div class="stock-status">' +
+          (product.stock > 0
+            ? "In Stock"
+            : '<span style="color:var(--error);">Out of Stock</span>') +
+          "</div>" +
+          '<p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:1rem;">Sold by ShopVault</p>' +
+          "<label>Quantity:</label>" +
+          '<input type="number" id="quantity" value="1" min="1" max="' + maxQty + '" style="width:100%; padding:0.5rem; margin:0.5rem 0 1.5rem 0; background:var(--bg); border:1px solid var(--border); color:var(--text);">' +
+          '<button class="btn btn-secondary" onclick="addToCart()" style="width:100%; margin-bottom:0.5rem;" ' +
+          (product.stock <= 0 ? "disabled" : "") +
+          ">Add to Cart</button>" +
+          '<button class="btn btn-secondary" onclick="toggleWishlist()" style="width:100%; margin-bottom:0.5rem;">' +
+          (isWishlisted ? "♥ In Wishlist" : "♡ Add to Wishlist") +
+          "</button>" +
+          '<button class="btn btn-primary" onclick="buyNow()" style="width:100%;" ' +
+          (product.stock <= 0 ? "disabled" : "") +
+          ">Buy Now</button>" +
+          '<p id="cartMessage" style="margin-top:1rem; font-size:0.9rem;"></p>' +
+          "</div>" +
+          "</div>";
+          
+        var thumbs = document.querySelectorAll(".thumbnails .thumb-img");
+        for (var t = 0; t < thumbs.length; t++) {
+          (function (el) {
+            el.addEventListener("click", function () {
+              var src = el.getAttribute("data-src");
+              if (src) document.getElementById("mainImage").src = src;
+              for (var i = 0; i < thumbs.length; i++) {
+                thumbs[i].classList.remove("active");
+                thumbs[i].style.borderColor = "transparent";
+              }
+              el.classList.add("active");
+              el.style.borderColor = "var(--accent)";
+            });
+          })(thumbs[t]);
+        }
+      }
+
+      async function addToCart() {
+        var token = getToken();
+        var quantityEl = document.getElementById("quantity");
+        var quantity = quantityEl ? parseInt(quantityEl.value, 10) || 1 : 1;
+        var message = document.getElementById("cartMessage");
+
+        if (!token) {
+          window.location.href =
+            "login.html?redirect=" +
+            encodeURIComponent("product.html?id=" + productId);
+          return false;
+        }
+
+        if (message) {
+          message.textContent = "";
+          message.style.color = "";
+        }
+
+        try {
+          var res = await fetch(BASE_URL + "/add-to-cart", {
+            method: "POST",
+            headers: authHeaders(),
+            body: JSON.stringify({ product_id: productId, quantity: quantity }),
+          });
+          var data = await res.json();
+
+          if (!res.ok) {
+            if (message) {
+              message.textContent = data.message || "Please Log out and login again";
+              message.style.color = "var(--error)";
+            }
+            return false;
+          }
+
+          if (message) {
+            message.textContent = "Added to cart!";
+            message.style.color = "var(--success)";
+          }
+          return true;
+        } catch (err) {
+          if (message) {
+            message.textContent = "Server error";
+            message.style.color = "var(--error)";
+          }
+          return false;
+        }
+      }
+
+      function buyNow() {
+        addToCart().then(function (ok) {
+          if (ok) window.location.href = "checkout.html";
+        });
+      }
+
+      async function toggleWishlist() {
+        if (!isLoggedIn()) {
+          window.location.href =
+            "login.html?redirect=" +
+            encodeURIComponent("product.html?id=" + productId);
+          return;
+        }
+        try {
+          var res = await fetch(BASE_URL + "/wishlist/" + productId, {
+            method: isWishlisted ? "DELETE" : "POST",
+            headers: authHeaders(),
+          });
+          if (res.ok) {
+            isWishlisted = !isWishlisted;
+            fetchProduct();
+            renderHeader("Home");
+          }
+        } catch (e) {}
+      }
+    </script>
+  </body>
+</html>

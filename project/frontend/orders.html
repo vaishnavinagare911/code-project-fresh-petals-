@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Orders –freshpetals</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body style="background:url('https://img.freepik.com/premium-photo/shopping-trolley-with-flowers-pink-punchy-pastel-background-banner-with-copy-space-top-view-flat-lay-creative-layout-festive-shopping-sale-gifts-her_769609-6629.jpg?semt=ais_rp_progressive&w=740&q=80') center/cover no-repeat;">
+
+<header></header>
+
+<div class="container">
+  <h1 class="page-title">My Orders</h1>
+  <div id="ordersContainer">Loading...</div>
+</div>
+
+<script src="js/common.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  renderHeader("My Orders");
+  if (!isLoggedIn()) {
+    document.getElementById("ordersContainer").innerHTML =
+      '<p class="require-auth">Please <a href="login.html">login</a> to view your orders.</p>';
+    return;
+  }
+  fetchOrders();
+});
+
+async function fetchOrders() {
+  try {
+    const res = await fetch(`${BASE_URL}/my-orders`, {
+      headers: { Authorization: "Bearer " + getToken() },
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      document.getElementById("ordersContainer").innerHTML =
+        '<p class="text-muted">Failed to load orders.</p>';
+      return;
+    }
+
+    const orders = data.orders || [];
+    displayOrders(orders);
+  } catch (err) {
+    document.getElementById("ordersContainer").innerHTML =
+      '<p class="text-muted">Server error.</p>';
+  }
+}
+
+function displayOrders(orders) {
+  const container = document.getElementById("ordersContainer");
+  container.innerHTML = "";
+
+  if (!orders.length) {
+    container.innerHTML = `
+      <div class="orders-empty">
+        <p>You have no orders yet.</p>
+        <a href="index.html" class="btn btn-primary" style="margin-top:1rem; text-decoration:none;">Start shopping</a>
+      </div>
+    `;
+    return;
+  }
+
+  orders.forEach((order) => {
+    const total = (order.items || []).reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.quantity) || 0), 0);
+    const card = document.createElement("div");
+    card.className = "order-card";
+    const itemsHtml = order.items
+      .map(
+        (item) => `
+        <div class="order-item">
+          <span>${escapeHtml(item.name)} (×${item.quantity || 0})</span>
+          <span>₹ ${((Number(item.price) || 0) * (Number(item.quantity) || 0)).toFixed(2)}</span>
+        </div>
+      `
+      )
+      .join("");
+    card.innerHTML = `
+      <h3>Order #${(order._id || "").slice(-8)}</h3>
+      ${itemsHtml}
+      <div class="total">Total: ₹ ${total.toFixed(2)}</div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+function escapeHtml(s) {
+  const div = document.createElement("div");
+  div.textContent = s;
+  return div.innerHTML;
+}
+</script>
+
+</body>
+</html>

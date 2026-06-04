@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wishlist – Freshpetals</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body style="background:url('https://img.freepik.com/premium-photo/shopping-trolley-with-flowers-pink-punchy-pastel-background-banner-with-copy-space-top-view-flat-lay-creative-layout-festive-shopping-sale-gifts-her_769609-6629.jpg?semt=ais_rp_progressive&w=740&q=80') center/cover no-repeat;">
+
+<header></header>
+
+<div class="container">
+  <h1 class="page-title">My Wishlist</h1>
+  <div id="wishlistContainer">Loading...</div>
+</div>
+
+<script src="js/common.js"></script>
+<script>
+function escapeHtml(s) {
+  const div = document.createElement("div");
+  div.textContent = s == null ? "" : String(s);
+  return div.innerHTML;
+}
+
+function formatPrice(n) {
+  return "₹" + Number(n || 0).toLocaleString("en-IN");
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
+  await renderHeader("Wishlist");
+  if (!isLoggedIn()) {
+    document.getElementById("wishlistContainer").innerHTML =
+      '<p class="require-auth">Please <a href="login.html?redirect=wishlist.html">login</a> to view your wishlist.</p>';
+    return;
+  }
+  fetchWishlist();
+});
+
+async function fetchWishlist() {
+  try {
+    const res = await fetch(`${BASE_URL}/wishlist`, { headers: authHeaders() });
+    const data = await res.json();
+
+    if (!res.ok) {
+      document.getElementById("wishlistContainer").innerHTML =
+        '<p class="text-muted">Failed to load wishlist.</p>';
+      return;
+    }
+
+    const items = data.items || [];
+    if (!items.length) {
+      document.getElementById("wishlistContainer").innerHTML = `
+        <div class="cart-empty">
+          <p>Your wishlist is empty.</p>
+          <a href="index.html">Continue shopping</a>
+        </div>
+      `;
+      return;
+    }
+
+    const rows = items.map((p) => {
+      const img = p.image || "https://via.placeholder.com/80?text=No+Image";
+      const stockText = (Number(p.stock || 0) > 0)
+        ? '<span class="pill pill-success">In stock</span>'
+        : '<span class="pill pill-danger">Out of stock</span>';
+      return `
+        <div class="wishlist-item">
+          <img class="wishlist-img" src="${img}" alt="">
+          <div class="wishlist-meta">
+            <a class="wishlist-name" href="product.html?id=${encodeURIComponent(p.product_id)}">${escapeHtml(p.name)}</a>
+            <div class="wishlist-sub">${escapeHtml(p.category || "")}</div>
+            <div style="margin-top:0.5rem;">${stockText}</div>
+          </div>
+          <div class="wishlist-actions">
+            <div class="wishlist-price">${formatPrice(p.price)}</div>
+            <button class="btn btn-secondary" onclick="addToCart('${p.product_id}')" ${Number(p.stock||0)<=0 ? "disabled" : ""}>Add to Cart</button>
+            <button class="btn btn-danger" onclick="removeFromWishlist('${p.product_id}')">Remove</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    document.getElementById("wishlistContainer").innerHTML = `<div class="wishlist-list">${rows}</div>`;
+  } catch (err) {
+    document.getElementById("wishlistContainer").innerHTML =
+      '<p class="text-muted">Server error.</p>';
+  }
+}
+
+async function removeFromWishlist(productId) {
+  await fetch(`${BASE_URL}/wishlist/${productId}`, { method: "DELETE", headers: authHeaders() });
+  fetchWishlist();
+  renderHeader("Wishlist");
+}
+
+async function addToCart(productId) {
+  const res = await fetch(`${BASE_URL}/add-to-cart`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ product_id: productId, quantity: 1 }),
+  });
+  if (res.ok) {
+    window.location.href = "cart.html";
+  } else {
+    const data = await res.json().catch(() => ({}));
+    alert(data.message || "Failed to add to cart");
+  }
+}
+</script>
+
+</body>
+</html>
+

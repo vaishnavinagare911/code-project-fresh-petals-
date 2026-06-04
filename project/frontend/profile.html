@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Profile – Freshpetals</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body style="background:url('https://img.freepik.com/premium-photo/shopping-trolley-with-flowers-pink-punchy-pastel-background-banner-with-copy-space-top-view-flat-lay-creative-layout-festive-shopping-sale-gifts-her_769609-6629.jpg?semt=ais_rp_progressive&w=740&q=80') center/cover no-repeat;">
+
+<header></header>
+
+<div class="container">
+  <h1 class="page-title">My Profile</h1>
+  <div id="profileContainer">Loading...</div>
+</div>
+
+<script src="js/common.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  renderHeader("Profile");
+  if (!isLoggedIn()) {
+    document.getElementById("profileContainer").innerHTML =
+      '<p class="require-auth">Please <a href="login.html">login</a> to view your profile.</p>';
+    return;
+  }
+  fetchProfile();
+});
+
+async function fetchProfile() {
+  try {
+    const res = await fetch(`${BASE_URL}/profile`, {
+      headers: { Authorization: "Bearer " + getToken() },
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      document.getElementById("profileContainer").innerHTML =
+        '<p class="text-muted">Failed to load profile.</p>';
+      return;
+    }
+
+    const user = data.user || data;
+    if (user.role) setUserRole(user.role);
+    document.getElementById("profileContainer").innerHTML = `
+      <div class="profile-card">
+        <h2>Profile</h2>
+        <div class="profile-field"><strong>Name</strong> ${escapeHtml(user.name)}</div>
+        <div class="profile-field"><strong>Email</strong> ${escapeHtml(user.email)}</div>
+        ${user.role ? `<div class="profile-field"><strong>Role</strong> ${escapeHtml(user.role)}</div>` : ""}
+        <button class="btn btn-danger logout-btn" onclick="logout()">Logout</button>
+      </div>
+    `;
+  } catch (err) {
+    document.getElementById("profileContainer").innerHTML =
+      '<p class="text-muted">Server error.</p>';
+  }
+}
+
+function escapeHtml(s) {
+  const div = document.createElement("div");
+  div.textContent = s;
+  return div.innerHTML;
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin – Freshpetals</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body style="background:url('https://img.freepik.com/premium-photo/shopping-trolley-with-flowers-pink-punchy-pastel-background-banner-with-copy-space-top-view-flat-lay-creative-layout-festive-shopping-sale-gifts-her_769609-6629.jpg?semt=ais_rp_progressive&w=740&q=80') center/cover no-repeat;"> >
+> >
+
+<header></header>
+
+<div class="container">
+  <h1 class="page-title">Admin Dashboard</h1>
+  <div id="adminContainer">Loading...</div>
+</div>
+
+<script src="js/common.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", async () => {
+  if (!isLoggedIn()) {
+    window.location.href = "login.html?redirect=admin.html";
+    return;
+  }
+  if (!isAdmin()) {
+    document.getElementById("adminContainer").innerHTML = `
+      <div class="auth-card" style="max-width:480px;">
+        <h2>Access denied</h2>
+        <p class="text-muted" style="margin-bottom:1rem;">This page is for administrators only.</p>
+        <a href="index.html" class="btn btn-primary" style="text-decoration:none;">Back to Home</a>
+      </div>
+    `;
+    await renderHeader();
+    return;
+  }
+
+  await renderHeader("Admin");
+  renderAdminShell();
+  await loadOverview();
+  await loadProducts();
+  await loadUsers();
+});
+
+function escapeHtml(s) {
+  const div = document.createElement("div");
+  div.textContent = s == null ? "" : String(s);
+  return div.innerHTML;
+}
+
+function formatPrice(n) {
+  return "₹" + Number(n || 0).toLocaleString("en-IN");
+}
+
+function renderAdminShell() {
+  document.getElementById("adminContainer").innerHTML = `
+    <div class="admin-shell">
+      <div class="admin-tabs">
+        <button class="tab-btn active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
+        <button class="tab-btn" data-tab="products" onclick="switchTab('products')">Products</button>
+        <button class="tab-btn" data-tab="users" onclick="switchTab('users')">Users</button>
+      </div>
+
+      <section id="tab-overview" class="tab-panel active">
+        <div class="stat-grid" id="statGrid"></div>
+        <div class="admin-card" style="margin-top:1rem;">
+          <h2>Quick actions</h2>
+          <div class="quick-actions">
+            <button class="btn btn-secondary" onclick="switchTab('products')">Manage products</button>
+            <button class="btn btn-secondary" onclick="switchTab('users')">Manage users</button>
+          </div>
+          <p class="text-muted" style="margin-top:0.75rem;">Admin APIs are protected; non-admin users will get 403.</p>
+        </div>
+      </section>
+
+      <section id="tab-products" class="tab-panel">
+        <div class="admin-card">
+          <div class="admin-toolbar">
+            <h2 style="margin:0;">Products</h2>
+            <div class="admin-toolbar-actions">
+              <input id="productQuery" class="input" placeholder="Search products..." oninput="debouncedReloadProducts()">
+              <button class="btn btn-primary" onclick="openProductModal()">Add product</button>
+            </div>
+          </div>
+          <div id="productsTableWrap" class="table-wrap">Loading...</div>
+        </div>
+      </section>
+
+      <section id="tab-users" class="tab-panel">
+        <div class="admin-card">
+          <div class="admin-toolbar">
+            <h2 style="margin:0;">Users</h2>
+            <div class="admin-toolbar-actions">
+              <input id="userQuery" class="input" placeholder="Search users..." oninput="debouncedReloadUsers()">
+              <button class="btn btn-primary" onclick="openUserModal()">Add user</button>
+            </div>
+          </div>
+          <div id="usersTableWrap" class="table-wrap">Loading...</div>
+        </div>
+      </section>
+    </div>
+
+    <div id="modalBackdrop" class="modal-backdrop" style="display:none;" onclick="closeModal()"></div>
+    <div id="modal" class="modal" style="display:none;" role="dialog" aria-modal="true"></div>
+  `;
+}
+
+function switchTab(tab) {
+  document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === "tab-" + tab));
+}
+
+let _reloadProductsTimer = null;
+function debouncedReloadProducts() {
+  clearTimeout(_reloadProductsTimer);
+  _reloadProductsTimer = setTimeout(loadProducts, 250);
+}
+
+let _reloadUsersTimer = null;
+function debouncedReloadUsers() {
+  clearTimeout(_reloadUsersTimer);
+  _reloadUsersTimer = setTimeout(loadUsers, 250);
+}
+
+async function loadOverview() {
+  try {
+    const res = await fetch(`${BASE_URL}/admin/stats`, { headers: authHeaders() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Failed");
+    document.getElementById("statGrid").innerHTML = `
+      <div class="stat-card"><div class="stat-label">Products</div><div class="stat-value">${Number(data.total_products||0)}</div></div>
+      <div class="stat-card"><div class="stat-label">Users</div><div class="stat-value">${Number(data.total_users||0)}</div></div>
+      <div class="stat-card"><div class="stat-label">Orders</div><div class="stat-value">${Number(data.total_orders||0)}</div></div>
+      <div class="stat-card"><div class="stat-label">Revenue (est.)</div><div class="stat-value">${formatPrice(data.revenue_estimate||0)}</div></div>
+    `;
+  } catch (e) {
+    document.getElementById("statGrid").innerHTML = `<p class="text-muted">Failed to load stats.</p>`;
+  }
+}
+
+async function loadProducts() {
+  const q = (document.getElementById("productQuery")?.value || "").trim();
+  const wrap = document.getElementById("productsTableWrap");
+  wrap.innerHTML = "Loading...";
+  try {
+    const res = await fetch(`${BASE_URL}/admin/products?query=${encodeURIComponent(q)}&limit=200`, { headers: authHeaders() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Failed");
+    const products = data.products || [];
+    if (!products.length) {
+      wrap.innerHTML = `<p class="text-muted">No products found.</p>`;
+      return;
+    }
+    wrap.innerHTML = `
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Category</th>
+            <th class="text-right">Price</th>
+            <th class="text-right">Stock</th>
+            <th style="width:220px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${products.map((p) => `
+            <tr>
+              <td>
+                <div class="row-title">${escapeHtml(p.name)}</div>
+                <div class="row-sub">${escapeHtml((p._id||"").slice(-8))}</div>
+              </td>
+              <td>${escapeHtml(p.category || "")}</td>
+              <td class="text-right">${formatPrice(p.price || 0)}</td>
+              <td class="text-right">${Number(p.stock || 0)}</td>
+              <td>
+                <div class="row-actions">
+                  <button class="btn btn-secondary" onclick='openProductModal(${JSON.stringify(p).replace(/</g,"\\u003c")})'>Edit</button>
+                  <button class="btn btn-danger" onclick="deleteProduct('${p._id}')">Delete</button>
+                </div>
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+  } catch (e) {
+    wrap.innerHTML = `<p class="text-muted">Failed to load products.</p>`;
+  }
+}
+
+async function loadUsers() {
+  const q = (document.getElementById("userQuery")?.value || "").trim();
+  const wrap = document.getElementById("usersTableWrap");
+  wrap.innerHTML = "Loading...";
+  try {
+    const res = await fetch(`${BASE_URL}/admin/users?query=${encodeURIComponent(q)}&limit=200`, { headers: authHeaders() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Failed");
+    const users = data.users || [];
+    if (!users.length) {
+      wrap.innerHTML = `<p class="text-muted">No users found.</p>`;
+      return;
+    }
+    wrap.innerHTML = `
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th style="width:220px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${users.map((u) => `
+            <tr>
+              <td>
+                <div class="row-title">${escapeHtml(u.name)}</div>
+                <div class="row-sub">${escapeHtml((u._id||"").slice(-8))}</div>
+              </td>
+              <td>${escapeHtml(u.email)}</td>
+              <td>
+                <select class="input" onchange="updateUserRole('${u._id}', this.value)">
+                  <option value="user" ${u.role==="user"?"selected":""}>user</option>
+                  <option value="admin" ${u.role==="admin"?"selected":""}>admin</option>
+                </select>
+              </td>
+              <td>
+                <div class="row-actions">
+                  <button class="btn btn-secondary" onclick='openUserModal(${JSON.stringify(u).replace(/</g,"\\u003c")})'>Edit</button>
+                  <button class="btn btn-danger" onclick="deleteUser('${u._id}')">Delete</button>
+                </div>
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+  } catch (e) {
+    wrap.innerHTML = `<p class="text-muted">Failed to load users.</p>`;
+  }
+}
+
+function openModal(html) {
+  const backdrop = document.getElementById("modalBackdrop");
+  const modal = document.getElementById("modal");
+  backdrop.style.display = "block";
+  modal.style.display = "block";
+  modal.innerHTML = html;
+}
+
+function closeModal() {
+  document.getElementById("modalBackdrop").style.display = "none";
+  const modal = document.getElementById("modal");
+  modal.style.display = "none";
+  modal.innerHTML = "";
+}
+
+function openProductModal(product) {
+  const p = product || {};
+  openModal(`
+    <div class="modal-card" onclick="event.stopPropagation()">
+      <h2>${p._id ? "Edit product" : "Add product"}</h2>
+      <form onsubmit="saveProduct(event, '${p._id || ""}')">
+        <input class="input" id="pName" placeholder="Name" value="${escapeHtml(p.name||"")}" required>
+        <textarea class="input" id="pDesc" placeholder="Description" rows="4" required>${escapeHtml(p.description||"")}</textarea>
+        <div class="grid-2">
+          <input class="input" id="pPrice" type="number" step="0.01" min="0" placeholder="Price" value="${Number(p.price||0)}" required>
+          <input class="input" id="pStock" type="number" min="0" placeholder="Stock" value="${Number(p.stock||0)}" required>
+        </div>
+        <input class="input" id="pCategory" placeholder="Category" value="${escapeHtml(p.category||"")}">
+        <input class="input" id="pImages" placeholder="Image URLs (comma separated)" value="${escapeHtml((p.images||[]).join(", "))}">
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">${p._id ? "Save" : "Create"}</button>
+        </div>
+        <p id="modalMsg" class="auth-message"></p>
+      </form>
+    </div>
+  `);
+}
+
+async function saveProduct(e, id) {
+  e.preventDefault();
+  const msg = document.getElementById("modalMsg");
+  msg.textContent = "";
+  msg.className = "auth-message";
+
+  const payload = {
+    name: document.getElementById("pName").value.trim(),
+    description: document.getElementById("pDesc").value.trim(),
+    price: Number(document.getElementById("pPrice").value),
+    stock: Number(document.getElementById("pStock").value),
+    category: document.getElementById("pCategory").value.trim(),
+    images: (document.getElementById("pImages").value || "").split(",").map(s => s.trim()).filter(Boolean),
+  };
+
+  try {
+    const res = await fetch(`${BASE_URL}/admin/products${id ? "/" + id : ""}`, {
+      method: id ? "PUT" : "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Failed");
+    msg.textContent = id ? "Product updated." : "Product created.";
+    msg.className = "auth-message success";
+    await loadProducts();
+    await loadOverview();
+    closeModal();
+  } catch (err) {
+    msg.textContent = String(err.message || "Server error");
+    msg.className = "auth-message error";
+  }
+}
+
+async function deleteProduct(id) {
+  if (!confirm("Delete this product?")) return;
+  await fetch(`${BASE_URL}/admin/products/${id}`, { method: "DELETE", headers: authHeaders() });
+  await loadProducts();
+  await loadOverview();
+}
+
+function openUserModal(user) {
+  const u = user || {};
+  openModal(`
+    <div class="modal-card" onclick="event.stopPropagation()">
+      <h2>${u._id ? "Edit user" : "Add user"}</h2>
+      <form onsubmit="saveUser(event, '${u._id || ""}')">
+        <input class="input" id="uName" placeholder="Name" value="${escapeHtml(u.name||"")}" required>
+        <input class="input" id="uEmail" placeholder="Email" value="${escapeHtml(u.email||"")}" required>
+        <div class="grid-2">
+          <select class="input" id="uRole">
+            <option value="user" ${(u.role||"user")==="user"?"selected":""}>user</option>
+            <option value="admin" ${(u.role||"user")==="admin"?"selected":""}>admin</option>
+          </select>
+          <input class="input" id="uPass" placeholder="${u._id ? "New password (optional)" : "Password"}" ${u._id ? "" : "required"}>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">${u._id ? "Save" : "Create"}</button>
+        </div>
+        <p id="modalMsg" class="auth-message"></p>
+      </form>
+    </div>
+  `);
+}
+
+async function saveUser(e, id) {
+  e.preventDefault();
+  const msg = document.getElementById("modalMsg");
+  msg.textContent = "";
+  msg.className = "auth-message";
+
+  const payload = {
+    name: document.getElementById("uName").value.trim(),
+    email: document.getElementById("uEmail").value.trim(),
+    role: document.getElementById("uRole").value,
+  };
+  const pass = (document.getElementById("uPass").value || "").trim();
+
+  if (!id) {
+    payload.password = pass;
+  } else if (pass) {
+    msg.textContent = "Password changes are not supported in this UI yet.";
+    msg.className = "auth-message error";
+    return;
+  }
+
+  try {
+    const res = await fetch(`${BASE_URL}/admin/users${id ? "/" + id : ""}`, {
+      method: id ? "PUT" : "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Failed");
+    msg.textContent = id ? "User updated." : "User created.";
+    msg.className = "auth-message success";
+    await loadUsers();
+    await loadOverview();
+    closeModal();
+  } catch (err) {
+    msg.textContent = String(err.message || "Server error");
+    msg.className = "auth-message error";
+  }
+}
+
+async function updateUserRole(id, role) {
+  await fetch(`${BASE_URL}/admin/users/${id}`, {
+    method: "PUT",
+    headers: authHeaders(),
+    body: JSON.stringify({ role }),
+  });
+  await loadOverview();
+}
+
+async function deleteUser(id) {
+  if (!confirm("Delete this user?")) return;
+  await fetch(`${BASE_URL}/admin/users/${id}`, { method: "DELETE", headers: authHeaders() });
+  await loadUsers();
+  await loadOverview();
+}
+</script>
+
+</body>
+</html>

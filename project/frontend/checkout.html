@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+<title>Checkout – Freshpetals</title>
+
+<link rel="stylesheet" href="styles.css" />
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+</head>
+
+<body style="background:url('https://img.freepik.com/premium-photo/shopping-trolley-with-flowers-pink-punchy-pastel-background-banner-with-copy-space-top-view-flat-lay-creative-layout-festive-shopping-sale-gifts-her_769609-6629.jpg?semt=ais_rp_progressive&w=740&q=80') center/cover no-repeat;">
+
+<header></header>
+
+<div class="container">
+
+<h1 class="page-title">Checkout</h1>
+
+<div id="checkoutContainer">Loading...</div>
+
+<div id="billSection" class="bill-section" style="display:none;"></div>
+
+</div>
+
+<script src="js/common.js"></script>
+
+<script>
+
+const SITE_NAME = "freshpetals";
+const SHIPPING_FLAT = 0;
+
+
+function escapeHtml(str){
+if(str==null) return "";
+return String(str).replace(/[&<>"']/g,function(m){
+return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m];
+});
+}
+
+
+document.addEventListener("DOMContentLoaded",function(){
+
+renderHeader("Cart");
+
+if(!isLoggedIn()){
+
+document.getElementById("checkoutContainer").innerHTML=
+'<p class="require-auth">Please <a href="login.html">login</a> to checkout.</p>';
+
+return;
+}
+
+loadCheckout();
+
+});
+
+
+async function loadCheckout(){
+
+try{
+
+const res = await fetch(BASE_URL + "/cart",{
+headers:{Authorization:"Bearer "+getToken()}
+});
+
+const data = await res.json();
+
+const items = data.items || [];
+
+const itemsTotal =
+data.total != null
+? data.total
+: items.reduce((s,i)=>s+(i.subtotal||0),0);
+
+if(items.length===0){
+
+document.getElementById("checkoutContainer").innerHTML=
+'<p class="text-muted">Your cart is empty.</p>'+
+'<a href="index.html" class="btn btn-primary">Continue shopping</a>';
+
+return;
+}
+
+const shipping = SHIPPING_FLAT;
+const finalTotal = itemsTotal + shipping;
+
+document.getElementById("checkoutContainer").innerHTML = `
+
+<div class="checkout-layout">
+
+<div class="checkout-forms">
+
+<div class="step-container">
+
+<h2>1. Delivery Address</h2>
+
+<form id="addressForm">
+
+<input type="text" class="input-field" id="addrFullName" placeholder="Full Name" required minlength="2" maxlength="60" autocomplete="name">
+
+<input type="text" class="input-field" id="addrHouse" placeholder="Flat / House No" required minlength="1" maxlength="80" autocomplete="address-line1">
+
+<div class="form-row">
+
+<input type="text" class="input-field" id="addrCity" placeholder="City" required minlength="2" maxlength="40" autocomplete="address-level2">
+
+<input type="text" class="input-field" id="addrPin" placeholder="PIN Code" required inputmode="numeric" maxlength="6" autocomplete="postal-code">
+
+</div>
+
+<p id="addressError" class="auth-message" style="margin-top:0.75rem;"></p>
+
+</form>
+
+</div>
+
+
+<div class="step-container">
+
+<h2>2. Payment Method</h2>
+
+<div class="payment-methods">
+
+<label>
+<input type="radio" name="payment" value="upi">
+UPI / Net Banking
+</label>
+
+<label>
+<input type="radio" name="payment" value="cod">
+Cash on Delivery
+</label>
+
+<div id="upiQRSection" style="display:none;margin-top:20px;">
+
+<h3>Scan to Pay</h3>
+
+<img id="upiQRImage" style="width:200px;height:200px;">
+
+<p id="upiAmount"></p>
+
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+
+<div class="step-container checkout-summary">
+
+<h2>Order Summary</h2>
+
+${items.map(i=>`
+<div style="display:flex;justify-content:space-between;margin-bottom:0.5rem;">
+<span>${escapeHtml(i.name)} × ${i.quantity}</span>
+<span>₹${Number(i.subtotal).toFixed(2)}</span>
+</div>
+`).join("")}
+
+<hr>
+
+<div style="display:flex;justify-content:space-between;">
+</div>
+
+<div style="display:flex;justify-content:space-between;font-size:1.25rem;font-weight:700;color:var(--accent);">
+
+<span>Total:</span>
+
+<span>₹${finalTotal.toFixed(2)}</span>
+
+</div>
+
+<button id="placeOrderBtn"
+class="btn btn-primary"
+style="width:100%;margin-top:15px;"
+onclick="placeOrder()">
+
+Place Your Order
+
+</button>
+
+</div>
+
+</div>
+
+`;
+
+setupPaymentListeners();
+
+}catch(err){
+
+document.getElementById("checkoutContainer").innerHTML=
+'<p class="text-muted">Failed to load cart.</p>';
+
+}
+
+}
+
+
+function setupPaymentListeners(){
+
+const radios=document.querySelectorAll('input[name="payment"]');
+
+radios.forEach(radio=>{
+
+radio.addEventListener("change",async function(){
+
+if(this.value==="upi"){
+
+await loadUPIQR();
+
+}else{
+
+document.getElementById("upiQRSection").style.display="none";
+
+}
+
+});
+
+});
+
+}
+
+
+async function loadUPIQR(){
+
+try{
+
+const res=await fetch(BASE_URL+"/cart/get_qr",{
+headers:{Authorization:"Bearer "+getToken()}
+});
+
+const data=await res.json();
+
+if(!res.ok){
+
+alert(data.message||"Failed to generate QR");
+
+return;
+
+}
+
+document.getElementById("upiQRImage").src=
+"data:image/png;base64,"+data.qr_code;
+
+document.getElementById("upiAmount").innerText=
+"Amount to pay: ₹"+data.total_amount;
+
+document.getElementById("upiQRSection").style.display="block";
+
+}catch(err){
+
+console.error(err);
+
+}
+
+}
+
+
+async function placeOrder(){
+
+// Validate address + payment selection before submitting
+if(!validateCheckout()){
+  return;
+}
+
+var btn=document.getElementById("placeOrderBtn");
+
+btn.disabled=true;
+btn.textContent="Placing order...";
+
+try{
+
+var res=await fetch(BASE_URL+"/payment",{
+
+method:"POST",
+
+headers:{Authorization:"Bearer "+getToken()}
+
+});
+
+var data=await res.json();
+
+if(!res.ok){
+
+btn.disabled=false;
+btn.textContent="Place Your Order";
+
+alert(data.message||"Failed to place order");
+
+return;
+
+}
+
+await showBillModal();
+
+}catch(err){
+
+btn.disabled=false;
+btn.textContent="Place Your Order";
+
+alert("Something went wrong.");
+
+}
+
+}
+
+function validateCheckout(){
+  var nameEl = document.getElementById("addrFullName");
+  var houseEl = document.getElementById("addrHouse");
+  var cityEl = document.getElementById("addrCity");
+  var pinEl = document.getElementById("addrPin");
+  var errEl = document.getElementById("addressError");
+
+  function fail(msg, el){
+    if(errEl){
+      errEl.textContent = msg;
+      errEl.className = "auth-message error";
+    } else {
+      alert(msg);
+    }
+    if(el && el.focus) el.focus();
+    return false;
+  }
+
+  if(errEl){
+    errEl.textContent = "";
+    errEl.className = "auth-message";
+  }
+
+  var fullName = (nameEl?.value || "").trim();
+  var house = (houseEl?.value || "").trim();
+  var city = (cityEl?.value || "").trim();
+  var pin = (pinEl?.value || "").trim();
+
+  if(fullName.length < 2) return fail("Please enter your full name.", nameEl);
+  if(!/^[a-zA-Z][a-zA-Z\s.'-]{1,59}$/.test(fullName)) return fail("Name contains invalid characters.", nameEl);
+
+  if(house.length < 1) return fail("Please enter flat/house number.", houseEl);
+  if(house.length > 80) return fail("Flat/house field is too long.", houseEl);
+
+  if(city.length < 2) return fail("Please enter your city.", cityEl);
+  if(!/^[a-zA-Z][a-zA-Z\s.'-]{1,39}$/.test(city)) return fail("City contains invalid characters.", cityEl);
+
+  pin = pin.replace(/\s+/g,"");
+  if(!/^\d{6}$/.test(pin)) return fail("PIN Code must be exactly 6 digits.", pinEl);
+  if(pinEl) pinEl.value = pin;
+
+  var selectedPayment = document.querySelector('input[name="payment"]:checked');
+  if(!selectedPayment) return fail("Please select a payment method (UPI or COD).", null);
+
+  // If UPI selected, ensure QR section is visible (generated)
+  if(selectedPayment.value === "upi"){
+    var qrSection = document.getElementById("upiQRSection");
+    var qrImg = document.getElementById("upiQRImage");
+    if(!(qrSection && qrSection.style.display === "block" && qrImg && qrImg.src)){
+      return fail("Please wait for the UPI QR to generate (or re-select UPI).", null);
+    }
+  }
+
+  return true;
+}
+
+async function showBillModal(){
+  // Fetch latest orders and show the most recent as a printable bill.
+  var ordersRes = await fetch(`${BASE_URL}/my-orders`, { headers: { Authorization: "Bearer " + getToken() } });
+  var ordersData = await ordersRes.json();
+  if(!ordersRes.ok){
+    alert(ordersData.message || "Order placed, but failed to load bill.");
+    location.href="orders.html";
+    return;
+  }
+
+  var orders = ordersData.orders || [];
+  if(!orders.length){
+    alert("Order placed successfully!");
+    location.href="orders.html";
+    return;
+  }
+
+  var order = orders[0];
+  var items = order.items || [];
+  var total = items.reduce((s,i)=> s + (Number(i.price)||0) * (Number(i.quantity)||0), 0);
+
+  var qrPayload = {
+    order_id: order._id || "",
+    items: items.map(i => ({ name: i.name, price: Number(i.price)||0, qty: Number(i.quantity)||0 })),
+    total: Number(total.toFixed(2))
+  };
+
+  var billHtml = `
+    <div class="modal-backdrop" id="billBackdrop"></div>
+    <div class="modal" style="display:grid;place-items:center;padding:1.25rem;">
+      <div class="bill-paper" style="width:min(520px,100%);position:relative;">
+        <div class="no-print" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+          <strong>Bill</strong>
+          <button class="btn btn-secondary" onclick="closeBill()">Close</button>
+        </div>
+
+        <div class="company-name" style="color:var(--accent);">${escapeHtml(SITE_NAME)}</div>
+        <div class="company-tagline">Thanks for shopping flowers with us</div>
+
+        <div class="text-muted" style="font-size:0.9rem;margin-bottom:1rem;">
+          Order #${escapeHtml((order._id||"").slice(-8))}
+        </div>
+
+        <table>
+          <thead>
+            <tr><th>Item</th><th class="text-right">Qty</th><th class="text-right">Amount</th></tr>
+          </thead>
+          <tbody>
+            ${items.map(i=>`
+              <tr>
+                <td>${escapeHtml(i.name)}</td>
+                <td class="text-right">${Number(i.quantity||0)}</td>
+                <td class="text-right">₹${((Number(i.price)||0)*(Number(i.quantity)||0)).toFixed(2)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+
+        <div class="bill-totals">
+          <div class="row"><span>Total</span><span>₹${total.toFixed(2)}</span></div>
+          <div class="row final"><span>Grand Total</span><span>₹${total.toFixed(2)}</span></div>
+        </div>
+
+        <div class="bill-qr-wrap">
+          <div class="text-muted" style="margin-bottom:0.5rem;">Order QR (contains order details)</div>
+          <div id="billQr"></div>
+        </div>
+
+        <div class="bill-actions no-print">
+          <button class="btn btn-primary" onclick="window.print()">Print</button>
+          <a class="btn btn-secondary" href="orders.html" style="text-decoration:none;">Go to orders</a>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("billSection").style.display = "block";
+  document.getElementById("billSection").innerHTML = billHtml;
+
+  // Render QR
+  try{
+    var el = document.getElementById("billQr");
+    el.innerHTML = "";
+    new QRCode(el, {
+      text: JSON.stringify(qrPayload),
+      width: 170,
+      height: 170,
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  }catch(_){}
+}
+
+function closeBill(){
+  var billSection = document.getElementById("billSection");
+  billSection.style.display = "none";
+  billSection.innerHTML = "";
+  location.href="orders.html";
+}
+
+</script>
+
+</body>
+</html>

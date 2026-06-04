@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Freshpetals – Home</title>
+<link rel="stylesheet" href="styles.css"/>
+</head>
+
+<body>
+
+<header></header>
+
+<section class="hero-banner head-banner" style="padding:6rem;">
+<h2 style="color:white;font-size:50px;">Fresh flowers for every moment</h2>
+<p>Order hand-picked bouquets, baskets and vases that feel personal and warm.</p>
+</section>
+
+<div class="container layout-main">
+<aside class="sidebar-filters">
+
+<h3>Filter flowers</h3>
+
+
+<div class="filter-group" style="margin-top:1rem">
+
+<h4>Category</h4>
+
+<label><input type="radio" name="categoryFilter" value="" checked onchange="applyFilters()"> All</label>
+<label><input type="radio" name="categoryFilter" value="Roses" onchange="applyFilters()"> Roses</label>
+<label><input type="radio" name="categoryFilter" value="Tulips" onchange="applyFilters()"> Tulips</label>
+<label><input type="radio" name="categoryFilter" value="Lilies" onchange="applyFilters()"> Lilies</label>
+<label><input type="radio" name="categoryFilter" value="Sunflowers" onchange="applyFilters()"> Sunflowers</label> 
+<label><input type="radio" name="categoryFilter" value="Gerbera" onchange="applyFilters()"> Gerbera</label>
+<label><input type="radio" name="categoryFilter" value="Orchids" onchange="applyFilters()"> Orchids </label> 
+<label><input type="radio" name="categoryFilter" value="Mixed Bouquets" onchange="applyFilters()"> Mixed bouquets</label>
+<label><input type="radio" name="categoryFilter" value="Birthday Flowers" onchange="applyFilters()"> Birthday flowers</label>
+<label><input type="radio" name="categoryFilter" value="Daily Flowers" onchange="applyFilters()"> Daily Flowers</label>
+<label><input type="radio" name="categoryFilter" value="Varmala" onchange="applyFilters()"> Varmala </label>
+<label><input type="radio" name="categoryFilter" value="Funeral" onchange="applyFilters()"> Funeral </label>
+<label><input type="radio" name="categoryFilter" value="Crochet Flowers" onchange="applyFilters()">Crochet Flowers </label>
+</div>
+
+<div class="filter-group">
+
+<h4>Max Price</h4>
+
+<input
+type="range"
+min="0"
+max="2500"
+step="100"
+value="2500"
+id="priceRange"
+oninput="updatePriceLabel();applyFilters();"
+/>
+
+<div id="priceVal" class="filter-price-label">₹2,500</div>
+
+</div>
+
+
+<div class="filter-group">
+
+<h4>Availability</h4>
+
+<label>
+<input type="checkbox" id="inStockOnly" onchange="applyFilters()">
+In stock only
+</label>
+
+</div>
+
+
+<button class="btn btn-secondary" style="margin-top:15px;" onclick="clearFilters()">
+Clear Filters
+</button>
+
+</aside>
+
+<main class="main-content">
+
+<div class="top-bar">
+
+<div class="search-bar">
+<input type="text" id="searchInput" placeholder="Search products...">
+<button type="button" onclick="searchProducts()">Search</button>
+</div>
+
+<div class="sort-options">
+<label style="margin-right:0.5rem">Sort by:</label>
+<select id="sortSelect" onchange="applyFilters()">
+<option value="relevance">Featured</option>
+<option value="price_asc">Price: Low to High</option>
+<option value="price_desc">Price: High to Low</option>
+</select>
+</div>
+
+</div>
+
+<div class="products" id="productList">Loading products...</div>
+
+</main>
+</div>
+
+<script src="js/common.js"></script>
+
+<script>
+
+let allProducts = [];
+let wishlistIds = new Set();
+
+function escapeHtml(str){
+if(str==null) return "";
+return String(str).replace(/[&<>"']/g,function(m){
+return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m];
+});
+}
+
+function formatPrice(n){
+return "₹"+Number(n).toLocaleString("en-IN");
+}
+
+function updatePriceLabel(){
+const el=document.getElementById("priceRange");
+const label=document.getElementById("priceVal");
+if(el && label) label.textContent=formatPrice(el.value);
+}
+
+document.addEventListener("DOMContentLoaded",function(){
+renderHeader("Home");
+fetchHomeData();
+});
+
+async function loadWishlistIds(){
+  if(!isLoggedIn()) { wishlistIds = new Set(); return; }
+  try{
+    const res = await fetch(`${BASE_URL}/wishlist`, { headers: authHeaders() });
+    const data = await res.json();
+    if(!res.ok) { wishlistIds = new Set(); return; }
+    const ids = (data.items || []).map(it => it.product_id).filter(Boolean);
+    wishlistIds = new Set(ids);
+  }catch(_){
+    wishlistIds = new Set();
+  }
+}
+
+async function fetchHomeData(){
+
+try{
+
+const res=await fetch(BASE_URL+"/home-data");
+
+const data=await res.json();
+
+allProducts = Array.isArray(data.products) ? data.products : [];
+
+await loadWishlistIds();
+displayProducts(allProducts);
+
+}
+
+catch(err){
+
+document.getElementById("productList").innerHTML =
+'<p class="text-muted">Failed to load products.</p>';
+
+}
+
+}
+
+async function searchProducts(){
+
+const query=document.getElementById("searchInput").value.trim();
+
+if(!query){
+displayProducts(allProducts);
+return;
+}
+
+try{
+
+const res=await fetch(BASE_URL+"/search?q="+encodeURIComponent(query));
+
+const data=await res.json();
+
+let results=data.results || data.products || [];
+
+displayProducts(results);
+
+}
+
+catch(err){
+
+document.getElementById("productList").innerHTML =
+'<p class="text-muted">Search failed.</p>';
+
+}
+
+}
+
+function applyFilters(){
+
+let filtered = allProducts.slice();
+
+const priceRange=document.getElementById("priceRange");
+const sortSelect=document.getElementById("sortSelect");
+
+if(priceRange){
+
+const maxPrice=Number(priceRange.value) || 999999;
+
+filtered = filtered.filter(p => Number(p.price) <= maxPrice);
+
+}
+
+const selectedCategory=document.querySelector('input[name="categoryFilter"]:checked');
+
+if(selectedCategory && selectedCategory.value!==""){
+
+filtered = filtered.filter(p =>
+(p.category || "").toLowerCase().trim() === selectedCategory.value.toLowerCase()
+);
+
+}
+
+const inStock=document.getElementById("inStockOnly");
+
+if(inStock && inStock.checked){
+
+filtered = filtered.filter(p => Number(p.stock || 0) > 0);
+
+}
+
+if(sortSelect){
+
+const sort=sortSelect.value;
+
+if(sort==="price_asc"){
+filtered.sort((a,b)=>Number(a.price)-Number(b.price));
+}
+
+else if(sort==="price_desc"){
+filtered.sort((a,b)=>Number(b.price)-Number(a.price));
+}
+
+}
+
+displayProducts(filtered);
+
+}
+
+function clearFilters(){
+
+document.querySelector('input[name="categoryFilter"][value=""]').checked=true;
+
+document.getElementById("priceRange").value=2500;
+
+document.getElementById("inStockOnly").checked=false;
+
+document.getElementById("sortSelect").value="relevance";
+
+document.getElementById("searchInput").value="";
+
+updatePriceLabel();
+
+displayProducts(allProducts);
+
+}
+
+function displayProducts(products){
+
+const container=document.getElementById("productList");
+
+container.innerHTML="";
+
+if(!products || products.length===0){
+
+container.innerHTML='<p class="text-muted">No products match your criteria.</p>';
+
+return;
+
+}
+
+products.forEach(function(product){
+
+const imageUrl =
+product.images && product.images.length > 0
+? product.images[0]
+: "https://via.placeholder.com/300x200?text=No+Image";
+
+const desc=(product.description || "").substring(0,60);
+const inWishlist = wishlistIds.has(product._id || "");
+  
+const card=document.createElement("div");
+
+card.className="card";
+
+card.innerHTML =
+  '<img src="' + imageUrl + '" alt="' + escapeHtml(product.name) + '">' +
+  '<div class="card-body">' +
+  '<h3>' + escapeHtml(product.name) + '</h3>' +
+  '<p class="card-desc">' + escapeHtml(desc) + (desc.length >= 60 ? "…" : "") + "</p>" +
+  '<p class="card-price">' + formatPrice(product.price) + "</p>" +
+  '<div class="card-actions">' +
+  '<button class="btn btn-secondary" onclick="toggleWishlist(\'' + (product._id || "") + '\')">' + (inWishlist ? "♥ Wishlisted" : "♡ Wishlist") + '</button>' +
+  '<button class="btn btn-primary" onclick="window.location.href=\'product.html?id=' + (product._id || "") + '\'">View Product</button>' +
+  '</div>' +
+  "</div>";
+
+container.appendChild(card);
+
+});
+
+}
+
+async function toggleWishlist(productId){
+  if(!isLoggedIn()){
+    window.location.href = "login.html?redirect=" + encodeURIComponent("index.html");
+    return;
+  }
+  const inWishlist = wishlistIds.has(productId);
+  await fetch(`${BASE_URL}/wishlist/${productId}`, {
+    method: inWishlist ? "DELETE" : "POST",
+    headers: authHeaders(),
+  });
+  await loadWishlistIds();
+  displayProducts(allProducts);
+  renderHeader("Home");
+}
+
+</script>
+
+</body>
+</html>

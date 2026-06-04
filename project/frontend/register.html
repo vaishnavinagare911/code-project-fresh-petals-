@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register – Freshpetals</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body style="background:url('https://img.freepik.com/premium-photo/shopping-trolley-with-flowers-pink-punchy-pastel-background-banner-with-copy-space-top-view-flat-lay-creative-layout-festive-shopping-sale-gifts-her_769609-6629.jpg?semt=ais_rp_progressive&w=740&q=80') center/cover no-repeat;">
+
+<header></header>
+
+<div class="auth-wrapper">
+  <div class="auth-card">
+    <h2>Create Account</h2>
+    <form onsubmit="register(event)">
+      <input type="text" id="name" placeholder="Full Name" required autocomplete="name">
+      <input type="email" id="email" placeholder="Email" required autocomplete="email">
+      <input type="password" id="password" placeholder="Password" required autocomplete="new-password">
+      <button type="submit" class="btn btn-primary">Register</button>
+    </form>
+    <p id="message" class="auth-message"></p>
+    <p class="text-muted" style="margin-top:1rem; font-size:0.9rem;">
+      Already have an account? <a href="login.html" style="color:var(--accent);">Login</a>
+    </p>
+  </div>
+</div>
+
+<script src="js/common.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  renderHeader("Register");
+  if (isLoggedIn()) {
+    window.location.href = "index.html";
+    return;
+  }
+});
+
+async function register(e) {
+  e.preventDefault();
+  const name = document.getElementById("name").value.trim();
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  const message = document.getElementById("message");
+
+  message.textContent = "";
+  message.className = "auth-message";
+
+  if (!name || !email || !password) {
+    message.textContent = "All fields are required.";
+    message.className = "auth-message error";
+    return;
+  }
+
+  try {
+    const res = await fetch(`${BASE_URL}/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, email, password }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      message.textContent = data.message || "Registration failed.";
+      message.className = "auth-message error";
+      return;
+    }
+
+    message.textContent = "Account created! Redirecting to login...";
+    message.className = "auth-message success";
+    setTimeout(() => { window.location.href = "login.html"; }, 1500);
+  } catch (err) {
+    message.textContent = "Server error. Try again.";
+    message.className = "auth-message error";
+  }
+}
+</script>
+
+</body>
+</html>

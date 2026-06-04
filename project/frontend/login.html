@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login – Freshpetals</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header></header>
+
+<div class="auth-wrapper" style="display:flex;justify-content:center;align-items:center;min-height:90vh;background:url('https://img.freepik.com/premium-photo/shopping-trolley-with-flowers-pink-punchy-pastel-background-banner-with-copy-space-top-view-flat-lay-creative-layout-festive-shopping-sale-gifts-her_769609-6629.jpg?semt=ais_rp_progressive&w=740&q=80') center/cover no-repeat;">
+
+  <div class="auth-card" style="background:white;padding:30px;border-radius:10px;box-shadow:0 5px 15px rgba(0,0,0,0.2);text-align:center;width:400px;">
+    
+    <h1 style="color:#ff4d6d;margin-bottom:7px;">freshpetals</h1>
+    <h2 style="margin-bottom:20px;">Login</h2>
+
+    <form onsubmit="login(event)">
+      <input type="email" id="email" placeholder="Email" required autocomplete="email"
+      style="width:100%;padding:10px;margin:8px 0;border:1px solid #ccc;border-radius:5px;">
+
+      <input type="password" id="password" placeholder="Password" required autocomplete="current-password"
+      style="width:100%;padding:10px;margin:8px 0;border:1px solid #ccc;border-radius:5px;">
+
+      <button type="submit" class="btn btn-primary"
+      style="width:100%;padding:10px;background:#ff4d6d;color:white;border:none;border-radius:5px;">
+      Login
+      </button>
+    </form>
+
+    <p id="message" class="auth-message"></p>
+
+    <p class="text-muted" style="margin-top:1rem;font-size:0.9rem;">
+      Don't have an account? 
+      <a href="register.html" style="color:#ff4d6d;">Register</a>
+    </p>
+
+  </div>
+</div>
+
+<script src="js/common.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  renderHeader("Login");
+  if (isLoggedIn()) {
+    window.location.href = "index.html";
+    return;
+  }
+});
+
+async function login(e) {
+  e.preventDefault();
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  const message = document.getElementById("message");
+
+  message.textContent = "";
+  message.className = "auth-message";
+
+  try {
+    const res = await fetch(`${BASE_URL}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      message.textContent = data.message || "Login failed";
+      message.className = "auth-message error";
+      return;
+    }
+
+    localStorage.setItem("token", data.token);
+    try {
+      const profileRes = await fetch(`${BASE_URL}/profile`, {
+        headers: { Authorization: "Bearer " + data.token },
+      });
+      const profileData = await profileRes.json();
+      if (profileData.role) setUserRole(profileData.role);
+    } catch (_) {}
+    message.textContent = "Success! Redirecting...";
+    message.className = "auth-message success";
+    const redirect = new URLSearchParams(window.location.search).get("redirect");
+    const allowed = ["index.html", "cart.html", "checkout.html", "orders.html", "profile.html", "admin.html"];
+    const ok = redirect && (!redirect.includes("://") && (allowed.includes(redirect) || redirect.startsWith("product.html")));
+    const goTo = ok ? redirect : "index.html";
+    setTimeout(() => { window.location.href = goTo; }, 500);
+  } catch (err) {
+    message.textContent = "Server error. Try again.";
+    message.className = "auth-message error";
+  }
+}
+</script>
+
+</body>
+</html>
